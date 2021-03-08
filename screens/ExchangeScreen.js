@@ -14,17 +14,38 @@ export default class ExchangeScreen extends Component{
         }
     }
 
+    createUniqueId(){
+        return Math.random().toString(36).substring(7);
+    }
+
     addItem = (itemName, description) =>{
         var userId = this.state.userId;
+        var randomRequestId = this.createUniqueId();
         db.collection('exchange_requests').add({
             "user_id": userId,
             "item_name": itemName,
             "description": description,
+            "request_id": randomRequestId,
+            "item_status": "requested",
+            "date": firebase.firestore.FieldValue.serverTimestamp()
+        })
+
+        /* setting isItemRequestActive to true and setting the item_request when a new item request is made */
+
+        await this.getItemRequest
+        db.collection('users').where("email_id", "==", "user_id").get().then()
+        .then((snapshot)=>{
+            snapshot.forEach((doc)=>{
+                db.collection('users').doc(doc.id).update({
+                    isItemRequestActive: true
+                })
+            })
         })
 
         this.setState({
             itemName: '',
-            description: ''
+            description: '',
+            requestId: randomRequestId
         })
 
         return Alert.alert(
@@ -38,11 +59,131 @@ export default class ExchangeScreen extends Component{
         );
     }
 
+    receivedItems=(itemName)=>{
+        var userId = this.state.userId
+        var requestId = this.state.requestId
+        db.collection('received_items').add({
+            "user_id": userId,
+            "item_name":itemName,
+            "request_id"  : requestId,
+            "itemStatus"  : "received",
+      
+        })
+    }
+
+    getIsItemRequestActive(){
+        db.collection('users').where('email_id', '==', this.state.userId).onSnapshot(querySnapshot=>{
+            querySnapshot.forEach(doc=>{
+                this.setState({
+                    isItemRequestActive: doc.data().isItemRequestActive,
+                    userDocId: doc.id
+                })
+            })
+        })
+    }
+
+    getItemRequest=()=>{
+        //getting the requested item
+        var itemRequest = db.collection('requested_items').where('user_id', '==', this.state.userId).get().then((snapshot)=>{
+            snapshot.forEach((doc)=>{
+                if (doc.data().item_status !== "received"){
+                    this.setState({
+                        requestId: doc.data().request_id,
+                        requestedItemName: doc.data().item_name,
+                        itemStatus: doc.data().item_status,
+                        docId: doc.id
+                    })
+                }
+            })
+        })
+    }
+
+    sendNotification=()=>{
+        //To get the first name and last name
+        db.collection('users').where('email_id', '==', this.state.userId).get().then((snapshot)=>{
+            snapshot.forEach((doc)=>{
+                var name = doc.data().first_name
+                var lastName = doc.data().last_name
+
+                //to get the donor id and item name
+                db.collection('all_notifications').where('request_id', '==', this.state.requestId).get().then((snapshot)=>{
+                    snapshot.forEach((doc)=>{
+                        var donorId = doc.data().donor_id
+                        var itemName = doc.data().item_name
+
+                        //target user id is the donor id to send notification to the user
+                        db.collection('all_notifications').add({
+                            "targeted_user_id": donorId,
+                            "message": name+" "+lastName+" received the item"+itemName,
+                            "notification_status": "unread",
+                            "item_name": itemName
+                        })
+                    })
+                })
+            })
+        })
+    }
+
+    componentDidMount(){
+        this.getItemRequest()
+        this.getIsItemRequestActive()
+    }
+
+    updateItemRequestStatus=()=>{
+        //Updating the item status after recieving the item
+        db.collection('requested_items').doc(this.state.docId).update({
+            item_status: 'received'
+        })
+
+        //Getting the doc id to update user's doc
+        db.collection('users').where('email_id', '==', this.state.userId).get().then((snapshot)=>{
+            snapshot.forEach((doc)=>{
+                //Updating the doc
+                db.collection('users').doc(doc.id).update({
+                    isItemRequestActive: false
+                })
+            })
+        })
+    }
+
     render(){
+
+        if(this.state.IsItemRequestActive === true){
+          return(
+    
+            // Status screen
+    
+            <View style = {{flex:1,justifyContent:'center'}}>
+              <View style={{borderColor:"orange",borderWidth:2,justifyContent:'center',alignItems:'center',padding:10,margin:10}}>
+                <Text>Item Name</Text>
+                <Text>{this.state.requestedItemName}</Text>
+              </View>
+
+              <View style={{borderColor:"orange",borderWidth:2,justifyContent:'center',alignItems:'center',padding:10,margin:10}}>
+                <Text> Item Status </Text>
+                <Text>{this.state.itemStatus}</Text>
+              </View>
+    
+              <TouchableOpacity style={{borderWidth:1,borderColor:'orange',backgroundColor:"orange",width:300,alignSelf:'center',alignItems:'center',height:30,marginTop:30}}
+              onPress={()=>{
+                this.sendNotification()
+                this.updateItemRequestStatus();
+                this.receivedItems(this.state.requestedItemName)
+              }}>
+              <Text>I received the item </Text>
+              </TouchableOpacity>
+            </View>
+          )
+        }
+        else
+        {
         return(
-            <View style = {{flex: 1}}>
-                <MyHeader title = "Add Item"/>
-                <KeyboardAvoidingView style = {styles.keyBoardStyle}>
+          // Form screen
+            <View style={{flex:1}}>
+              <MyHeader title="Add Item" navigation ={this.props.navigation}/>
+    
+              <ScrollView>
+                <KeyboardAvoidingView style={styles.keyBoardStyle}>
                     <TextInput
                         style = {styles.formTextInput}
                         placeholder = {"Item Name"}
@@ -75,11 +216,14 @@ export default class ExchangeScreen extends Component{
                     >
                         <Text>Add Item</Text>
                     </TouchableOpacity>
+    
                 </KeyboardAvoidingView>
+                </ScrollView>
             </View>
         )
+      }
     }
-}
+    }
 
 const styles = StyleSheet.create({
     keyBoardStyle : {

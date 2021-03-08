@@ -57,7 +57,7 @@ export default class MyDonationScreen extends Component {
             message = this.state.donorName + "Sent you the Item"
           }
           else{
-            message = this.state.donorName + "has shown interest in donating the book"
+            message = this.state.donorName + "has shown interest in donating the item"
           }
           db.collection("all_notifications").doc((doc.id).update({
             "message" : message,
